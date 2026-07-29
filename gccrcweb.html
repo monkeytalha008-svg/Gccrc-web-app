@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BOT-1</title>
+
+<style>
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+
+  .card {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(10px);
+    padding: 30px;
+    border-radius: 15px;
+    width: 350px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    text-align: center;
+  }
+
+  h2 {
+    margin-top: 0;
+    letter-spacing: 1px;
+  }
+
+  button {
+    background: #00c6ff;
+    background: linear-gradient(90deg, #00c6ff, #0072ff);
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    margin-bottom: 15px;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+
+  button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+
+  .status {
+    margin-bottom: 15px;
+    font-weight: bold;
+  }
+
+  .connected { color: #00ff9d; }
+  .disconnected { color: #ff4d4d; }
+
+  .data {
+    text-align: left;
+    font-size: 14px;
+    line-height: 1.8;
+    background: rgba(255,255,255,0.08);
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .label {
+    color: #aaa;
+  }
+
+  .value {
+    float: right;
+    font-weight: bold;
+  }
+</style>
+</head>
+
+<body>
+  <div class="card">
+    <h2> WiFi RC Car</h2>
+    <button onclick="start()">Start Controller</button>
+    <div id="status" class="status disconnected">Not Connected</div>
+
+    <div class="data">
+      <div><span class="label">Speed</span> <span id="speedVal" class="value">0</span></div>
+      <div><span class="label">Steering</span> <span id="turnVal" class="value">0</span></div>
+      <div><span class="label">Buttons</span> <span id="btnVal" class="value">0</span></div>
+    </div>
+  </div>
+
+<script>
+let ws;
+
+function start() {
+  ws = new WebSocket("ws://192.168.4.1:81/");
+  const status = document.getElementById("status");
+
+  ws.onopen = () => {
+    console.log("Connected to car");
+    status.textContent = "Connected to Car";
+    status.className = "status connected";
+  };
+
+  ws.onclose = () => {
+    status.textContent = "Disconnected";
+    status.className = "status disconnected";
+  };
+
+  window.addEventListener("gamepadconnected", (e) => {
+    console.log("Gamepad connected:", e.gamepad.id);
+    requestAnimationFrame(update);
+  });
+}
+
+function applyDeadzone(value, deadzone = 0.1) {
+  return Math.abs(value) < deadzone ? 0 : value;
+}
+
+function update() {
+
+  let gp = navigator.getGamepads()[0];
+
+  if (gp && ws && ws.readyState === 1) {
+
+    // LEFT STICK (Driving)
+    let forward  = applyDeadzone(-gp.axes[1]);
+    let steering = applyDeadzone( gp.axes[0]);
+
+    // RIGHT STICK (Camera)
+    let camX = applyDeadzone(gp.axes[2]);
+    let camY = applyDeadzone(-gp.axes[3]);
+
+    let speed = Math.round(forward * 255);
+    let turn  = Math.round(steering * 255);
+    let camx  = Math.round(camX * 255);
+    let camy  = Math.round(camY * 255);
+
+    // ANALOG TRIGGERS
+    let l2 = Math.round(gp.buttons[6].value * 255);
+    let r2 = Math.round(gp.buttons[7].value * 255);
+
+    // BUTTON BITMASK
+    let buttons = 0;
+
+    if (gp.buttons[0].pressed) buttons |= 1;        // Cross / A
+    if (gp.buttons[1].pressed) buttons |= 2;        // Circle / B
+    if (gp.buttons[2].pressed) buttons |= 4;        // Square / X
+    if (gp.buttons[3].pressed) buttons |= 8;        // Triangle / Y
+
+    if (gp.buttons[4].pressed) buttons |= 16;       // L1
+    if (gp.buttons[5].pressed) buttons |= 32;       // R1
+
+    if (gp.buttons[8].pressed) buttons |= 256;      // Select
+    if (gp.buttons[9].pressed) buttons |= 512;      // Start
+
+    if (gp.buttons[10].pressed) buttons |= 1024;    // L3
+    if (gp.buttons[11].pressed) buttons |= 2048;    // R3
+
+    if (gp.buttons[12].pressed) buttons |= 4096;    // D-Pad Up
+    if (gp.buttons[13].pressed) buttons |= 8192;    // D-Pad Down
+    if (gp.buttons[14].pressed) buttons |= 16384;   // D-Pad Left
+    if (gp.buttons[15].pressed) buttons |= 32768;   // D-Pad Right
+
+
+    // SEND DATA
+    ws.send(speed + "," + turn + "," + camx + "," + camy + "," + l2 + "," + r2 + "," + buttons);
+
+    // UI DISPLAY
+    document.getElementById("speedVal").textContent = speed;
+    document.getElementById("turnVal").textContent  = turn;
+    document.getElementById("btnVal").textContent   = buttons;
+  }
+
+  requestAnimationFrame(update);
+}
+</script>
+</body>
+</html>
+
